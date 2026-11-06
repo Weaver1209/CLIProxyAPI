@@ -124,8 +124,16 @@ func (h *BaseAPIHandler) WriteErrorResponse(c *gin.Context, msg *interfaces.Erro
 		return
 	}
 	if msg != nil && msg.Error != nil {
-		for _, value := range coreauth.SafeResponseHeaders(msg.Error).Values("Retry-After") {
+		safeHeaders := coreauth.SafeResponseHeaders(msg.Error)
+		for _, value := range safeHeaders.Values("Retry-After") {
 			c.Writer.Header().Add("Retry-After", value)
+		}
+		for k, vs := range safeHeaders {
+			if strings.HasPrefix(strings.ToLower(k), "x-codex-") {
+				for _, value := range vs {
+					c.Writer.Header().Add(k, value)
+				}
+			}
 		}
 	}
 	if msg != nil && msg.Addon != nil && PassthroughHeadersEnabled(h.CurrentConfig()) {

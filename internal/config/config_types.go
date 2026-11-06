@@ -561,6 +561,8 @@ type RoutingConfig struct {
 	//     auth errors (429, 401/402/403, 404/model support, invalid_grant) rebind as normal.
 	// Ignored when SessionAffinity is false.
 	SessionAffinityRebindOn string `yaml:"session-affinity-rebind-on,omitempty" json:"session-affinity-rebind-on,omitempty"`
+	// SessionAffinityReclaim reclaims established session bindings to higher-priority credentials when recovered.
+	SessionAffinityReclaim bool `yaml:"session-affinity-reclaim,omitempty" json:"session-affinity-reclaim,omitempty"`
 }
 
 // OAuthModelAlias defines a model ID alias for a specific channel.

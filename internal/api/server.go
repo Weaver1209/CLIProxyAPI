@@ -444,14 +444,8 @@ func (s *Server) Stop(ctx context.Context) error {
 		}
 	}
 
-	// Close the HTTP server immediately without graceful draining.
-	var errCloseServer error
-	if s.server != nil {
-		errCloseServer = s.server.Close()
-		if errors.Is(errCloseServer, http.ErrServerClosed) || errors.Is(errCloseServer, net.ErrClosed) {
-			errCloseServer = nil
-		}
-	}
+	// Close or gracefully drain the HTTP server.
+	errCloseServer := s.stopServerWithOptionalDrain(ctx)
 	if s.codexLiveHandler != nil {
 		s.codexLiveHandler.Close()
 	}

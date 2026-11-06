@@ -782,6 +782,16 @@ func buildResponsesWebsocketErrorPayload(errMsg *interfaces.ErrorMessage) ([]byt
 			status = http.StatusTooManyRequests
 			errText = http.StatusText(status)
 		}
+		if status == http.StatusTooManyRequests || isResponsesWebsocketQuotaOrCooldownError(errMsg.Error) {
+			status = http.StatusTooManyRequests
+			var causeErr error
+			if errMsg != nil {
+				causeErr = errMsg.Error
+			}
+			if cooldownBody, ok := handlers.CheckModelCooldownPayload(status, errText, causeErr); ok {
+				errText = string(cooldownBody)
+			}
+		}
 		if errMsg.Error != nil && strings.TrimSpace(errMsg.Error.Error()) != "" {
 			errText = errMsg.Error.Error()
 		}

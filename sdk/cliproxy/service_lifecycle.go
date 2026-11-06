@@ -69,7 +69,11 @@ func (s *Service) Run(ctx context.Context) error {
 	}
 
 	defer func() {
-		shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 30*time.Second)
+		shutdownBudget := 30 * time.Second
+		if drain := api.ShutdownDrainDuration(); drain > shutdownBudget {
+			shutdownBudget = drain + 30*time.Second
+		}
+		shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), shutdownBudget)
 		defer shutdownCancel()
 		if errShutdown := s.Shutdown(shutdownCtx); errShutdown != nil {
 			log.Errorf("service shutdown returned error: %v", errShutdown)
@@ -401,6 +405,9 @@ func (s *Service) Shutdown(ctx context.Context) error {
 
 		helps.RetireProxyPoolPublisher(s.proxyPoolPublisher)
 		usage.StopDefault()
+		if errFlush := Flush(ctx); errFlush != nil {
+			log.Warnf("usage history flush: %v", errFlush)
+		}
 	})
 	return shutdownErr
 }

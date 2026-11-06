@@ -83,6 +83,10 @@ func BuildErrorResponseBodyWithError(status int, errText string, err error) []by
 
 	trimmed := strings.TrimSpace(errText)
 
+	if payload, ok := CheckModelCooldownPayload(status, errText, err); ok {
+		return payload
+	}
+
 	if coreauth.IsTerminalAuthError(err) {
 		message := errText
 		if trimmed != "" && json.Valid([]byte(trimmed)) {

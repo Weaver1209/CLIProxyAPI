@@ -359,6 +359,15 @@ func (e *modelCooldownError) Headers() http.Header {
 		resetSeconds = 0
 	}
 	headers.Set("Retry-After", strconv.Itoa(resetSeconds))
+	if resetSeconds > 0 {
+		prefix, minutes := "X-Codex-Primary-", "300"
+		if resetSeconds > 5*3600 {
+			prefix, minutes = "X-Codex-Secondary-", "10080"
+		}
+		headers.Set(prefix+"Used-Percent", "100")
+		headers.Set(prefix+"Window-Minutes", minutes)
+		headers.Set(prefix+"Reset-At", strconv.FormatInt(time.Now().Add(time.Duration(resetSeconds)*time.Second).Unix(), 10))
+	}
 	return headers
 }
 
@@ -934,6 +943,7 @@ type SessionAffinitySelector struct {
 	matcher           *cliproxysession.MerklePrefixMatcher
 	subagentAffinity  bool
 	rebindOnQuotaOnly bool
+	reclaimAffinity   bool
 }
 
 const (
@@ -1069,6 +1079,7 @@ type SessionAffinityConfig struct {
 	TTL              time.Duration
 	SubagentAffinity *bool
 	RebindOn         string
+	Reclaim          bool
 }
 
 // NewSessionAffinitySelector creates a new session-aware selector.
@@ -1098,6 +1109,7 @@ func NewSessionAffinitySelectorWithConfig(cfg SessionAffinityConfig) *SessionAff
 		matcher:           cliproxysession.NewMerklePrefixMatcher(cfg.TTL),
 		subagentAffinity:  subagentAffinity,
 		rebindOnQuotaOnly: rebindOnQuotaOnly,
+		reclaimAffinity:   cfg.Reclaim,
 	}
 }
 
@@ -1220,6 +1232,13 @@ func (s *SessionAffinitySelector) Pick(ctx context.Context, provider, model stri
 	}
 
 	if cachedAuthID, ok := s.cache.GetAndRefresh(cacheKey); ok {
+		if s.reclaimAffinity {
+			if higherAuth, shouldReclaim := ReclaimAffinityIfHigherPriorityAvailable(cachedAuthID, available); shouldReclaim && higherAuth != nil {
+				bind(higherAuth.ID, true)
+				entry.Infof("session-affinity: reclaimed to higher priority auth | session=%s old_auth=%s new_auth=%s provider=%s model=%s", truncateSessionID(primaryID), cachedAuthID, higherAuth.ID, provider, model)
+				return higherAuth, nil
+			}
+		}
 		for _, auth := range available {
 			if auth.ID == cachedAuthID {
 				bind(auth.ID, true)
@@ -1352,6 +1371,11 @@ func (s *SessionAffinitySelector) pickLCP(ctx context.Context, provider, model s
 		for _, auth := range available {
 			if auth == nil || auth.ID != match.AuthID {
 				continue
+			}
+			if s.reclaimAffinity {
+				if higherAuth, shouldReclaim := ReclaimAffinityIfHigherPriorityAvailable(match.AuthID, available); shouldReclaim && higherAuth != nil {
+					auth = higherAuth
+				}
 			}
 			if match.SessionID != "" {
 				opts.Metadata[cliproxyexecutor.LCPAffinitySessionIDMetadataKey] = match.SessionID
